@@ -1,0 +1,9 @@
+# Snapchat My Data exports must NEVER be committed to this repository.
+*.zip
+mydata*.zip
+snapchat*.zip
+
+node_modules/
+test/fixtures/*.zip
+test/fixtures/expected.json
+.DS_Store

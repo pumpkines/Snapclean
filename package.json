@@ -1,0 +1,16 @@
+{
+  "name": "snapclean",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Tinder-style, on-device cleanup for a large Snapchat friends list. Static PWA — no build step required to run the app itself.",
+  "scripts": {
+    "test": "node test/build-fixtures.mjs && node test/run-tests.mjs",
+    "smoke": "node test/build-fixtures.mjs && node test/smoke.mjs",
+    "serve": "python3 -m http.server 8080"
+  },
+  "devDependencies": {
+    "fflate": "^0.8.2",
+    "fake-indexeddb": "^6.0.0",
+    "jsdom": "^25.0.0"
+  }
+}
