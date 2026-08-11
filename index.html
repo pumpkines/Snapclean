@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+  <meta name="theme-color" content="#0b0b0d">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="SnapClean">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="styles.css">
+  <title>SnapClean</title>
+</head>
+<body>
+  <main id="app">
+    <header>
+      <div>
+        <h1>SnapClean</h1>
+        <p id="subhead">Private Snapchat cleanup on your device</p>
+      </div>
+      <button id="settingsBtn" class="iconBtn">☰</button>
+    </header>
+
+    <section id="setup" class="panel">
+      <h2>Import Snapchat My Data</h2>
+      <p>Your ZIP is parsed locally in Safari. It is not uploaded anywhere.</p>
+      <label class="primary fileBtn">Choose Snapchat ZIP<input id="zipInput" type="file" accept=".zip,application/zip"></label>
+      <div id="importStatus"></div>
+    </section>
+
+    <section id="review" class="hidden">
+      <div class="toolbar">
+        <select id="filter"></select>
+        <span id="progress"></span>
+      </div>
+
+      <article id="card" class="card">
+        <div class="scoreRow">
+          <span id="state" class="pill"></span>
+          <span id="score"></span>
+        </div>
+        <h2 id="displayName"></h2>
+        <div id="username" class="username"></div>
+        <dl id="facts"></dl>
+        <button id="openProfile" class="snapBtn">View in Snapchat</button>
+      </article>
+
+      <div class="actions">
+        <button id="remove" class="remove">✕<small>REMOVE</small></button>
+        <button id="later" class="later">?<small>LATER</small></button>
+        <button id="keep" class="keep">♥<small>KEEP</small></button>
+      </div>
+      <button id="undo" class="textBtn">Undo last decision</button>
+    </section>
+
+    <section id="drawer" class="drawer hidden">
+      <button id="closeDrawer" class="iconBtn">✕</button>
+      <h2>SnapClean</h2>
+      <button id="reimport">Import newer ZIP</button>
+      <button id="exportDecisions">Export decisions CSV</button>
+      <button id="resetAll">Reset local data</button>
+      <hr>
+      <p id="stats"></p>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
