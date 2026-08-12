@@ -411,13 +411,17 @@ button, select, input {
 .batchRowInfo { flex: 1; min-width: 0; }
 .batchRowName { font-weight: 700; }
 .batchRowUser { color: var(--muted); font-size: 0.8rem; }
-.batchRowReopen {
-  color: var(--snap-yellow);
+.batchRowOpen {
+  background: var(--snap-yellow);
+  color: #0a0a0c;
   text-decoration: none;
   font-size: 0.8rem;
-  font-weight: 700;
+  font-weight: 800;
   flex-shrink: 0;
+  padding: 8px 14px;
+  border-radius: 10px;
 }
+.batchRowCheck { display: flex; align-items: center; }
 
 .emptyState { text-align: center; padding: 60px 20px; margin: auto; }
 .emptyState h2 { margin-bottom: 6px; }

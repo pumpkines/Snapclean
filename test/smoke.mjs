@@ -23,6 +23,9 @@ function assert(cond, msg) {
     console.log("ok  :", msg);
   }
 }
+function assertEqual(actual, expected, msg) {
+  assert(actual === expected, `${msg} (expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)})`);
+}
 
 async function main() {
   const html = readFileSync(`${root}/index.html`, "utf8");
@@ -123,7 +126,7 @@ async function main() {
   await new Promise((r) => setTimeout(r, 50));
   // Move several accounts to REMOVE so batch mode (which needs >1 remaining)
   // has something to work with.
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 4; i++) {
     const btn = [...view.querySelectorAll(".actions button")].find((b) => /REMOVE/.test(b.textContent));
     if (!btn) break;
     btn.click();
@@ -192,14 +195,52 @@ async function main() {
     assert(nameBefore !== nameAfter || !view.querySelector("#reviewCard"), "ArrowRight keyboard shortcut advances the review queue (Keep)");
   }
 
+  // --- "REMOVED \u2713 \u2014 OPEN NEXT" combined action -----------------------------
+  // Regression guard: this must use a real anchor .click(), and must never
+  // call window.open() more than once per press.
+  {
+    let anchorClicks = 0;
+    const originalAnchorClick = window.HTMLAnchorElement.prototype.click;
+    window.HTMLAnchorElement.prototype.click = function (...args) {
+      if (this.target === "_blank") anchorClicks++;
+      return originalAnchorClick.apply(this, args);
+    };
+    window.location.hash = "#/removal";
+    await new Promise((r) => setTimeout(r, 50));
+    const combinedBtn = [...view.querySelectorAll("button")].find((b) => /OPEN NEXT/.test(b.textContent));
+    assert(!!combinedBtn, "'REMOVED \u2713 \u2014 OPEN NEXT' combined button renders when multiple accounts remain");
+    if (combinedBtn) {
+      const before = anchorClicks;
+      combinedBtn.click();
+      await new Promise((r) => setTimeout(r, 50));
+      assertEqual(anchorClicks, before + 1, "pressing 'REMOVED \u2713 \u2014 OPEN NEXT' opens the next profile via exactly one real anchor click");
+    }
+    window.HTMLAnchorElement.prototype.click = originalAnchorClick;
+  }
+
   // --- Batch removal mode -------------------------------------------------
+  // Regression guard for the real bug report: starting a batch must NOT call
+  // window.open() in a loop (that's what produced blank/blocked tabs across
+  // browsers). Track calls to catch any regression.
+  let windowOpenCalls = 0;
+  const originalWindowOpen = window.open;
+  window.open = (...args) => {
+    windowOpenCalls++;
+    return originalWindowOpen(...args);
+  };
+
   window.location.hash = "#/removal";
   await new Promise((r) => setTimeout(r, 50));
   const batchBtn = view.querySelector(".batchLaunchBtn");
+  assert(!!batchBtn, "batch launcher button renders when 2+ accounts are queued for removal");
   if (batchBtn) {
+    const callsBefore = windowOpenCalls;
     batchBtn.click();
     await new Promise((r) => setTimeout(r, 50));
-    assert(/Batch/.test(view.textContent), "batch removal mode renders after 'Open Next N'");
+    assertEqual(windowOpenCalls, callsBefore, "starting a batch must not call window.open() at all (real link clicks only, per row)");
+    assert(/Batch/.test(view.textContent), "batch removal mode renders after starting a batch");
+    const openLink = view.querySelector(".batchRowOpen");
+    assert(!!openLink && openLink.tagName === "A" && openLink.getAttribute("href")?.includes("snapchat.com"), "each batch row is a real <a> link to the profile (reliable across browsers, unlike window.open)");
     const checkbox = view.querySelector(".batchRow input[type=checkbox]");
     assert(!!checkbox, "batch checklist renders a checkbox per opened profile");
     if (checkbox) {
@@ -216,6 +257,7 @@ async function main() {
       assert(!view.querySelector(".batchList"), "leaving batch mode returns to the normal Removal Queue view");
     }
   }
+  window.open = originalWindowOpen;
 
   // --- Search view ----------------------------------------------------
   window.location.hash = "#/search";

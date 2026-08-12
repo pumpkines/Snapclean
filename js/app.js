@@ -639,17 +639,33 @@
       if (state.pendingRemoval?.usernameKey === account.usernameKey) state.pendingRemoval = null;
       render();
     };
+    // Opens a URL in a new tab using a real, temporary <a> click rather than
+    // window.open() — browsers treat an actual link click more reliably as a
+    // genuine user action, which matters because this fires from inside
+    // another click handler (see removedAndNext below) rather than directly
+    // from the tap on this element.
+    function openUrlInNewTab(url) {
+      const a = document.createElement("a");
+      a.href = url;
+      a.target = "_blank";
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+
     const openInSnapchat = () => {
       state.pendingRemoval = { usernameKey: account.usernameKey, openedAt: Date.now() };
     };
     // One tap: mark this one removed AND immediately open the next person's
     // profile, so a fast reviewer can just alternate "remove in Snapchat" /
-    // "tap this button" without hunting for the Open button each time.
-    // window.open must fire synchronously (before any await) or Safari's
-    // popup blocker will swallow it, since it needs an active user gesture.
+    // "tap this button" without hunting for the Open button each time. This
+    // must stay a single new-tab-open (browsers, Safari especially, only
+    // reliably allow one per user gesture) — it fires synchronously, before
+    // any await, so it stays tied to the click.
     const removedAndNext = () => {
       const next = remaining[1];
-      if (next) window.open(snapchatUrl(next.username), "_blank", "noopener");
+      if (next) openUrlInNewTab(snapchatUrl(next.username));
       markRemoved();
     };
 
@@ -722,7 +738,7 @@
         el(
           "div",
           { class: "batchLauncher" },
-          el("p", { class: "muted" }, "On a computer, open several profiles at once as tabs, then check them off as you go:"),
+          el("p", { class: "muted" }, "Line up several profiles as a checklist, then open and check off each one:"),
           el(
             "div",
             { class: "batchButtons" },
@@ -733,7 +749,7 @@
                   class: "batchLaunchBtn",
                   onclick: () => startBatch(Math.min(n, remaining.length)),
                 },
-                `Open Next ${Math.min(n, remaining.length)}`
+                `Start batch of ${Math.min(n, remaining.length)}`
               )
             )
           )
@@ -742,14 +758,13 @@
     }
 
     function startBatch(n) {
+      // Deliberately does NOT call window.open() here. Browsers (Safari in
+      // particular) only reliably allow one new-tab-open per user gesture —
+      // trying to auto-open several in a loop causes the extras to open as
+      // blank/blocked tabs instead of the actual profile. Each row in batch
+      // mode has its own real link, so opening each one is its own genuine
+      // click and always works.
       const keys = remaining.slice(0, n).map((a) => a.usernameKey);
-      // Open each tab synchronously, in the same click handler, so browsers
-      // treat every one as tied to the user's actual gesture rather than
-      // blocking them as unsolicited popups.
-      for (const key of keys) {
-        const acc = state.byKey.get(key);
-        if (acc) window.open(snapchatUrl(acc.username), "_blank", "noopener");
-      }
       state.review.batch = keys;
       render();
     }
@@ -774,7 +789,7 @@
       el(
         "p",
         { class: "muted" },
-        `${items.length} tabs opened. Remove each one in Snapchat, then check it off below.`
+        `Tap Open on each row below — each opens in its own tab. Remove them there, then check it off here.`
       )
     );
 
@@ -782,27 +797,31 @@
     for (const acc of items) {
       const done = !!acc.removalCompleted;
       const row = el(
-        "label",
+        "div",
         { class: `batchRow${done ? " done" : ""}` },
-        el("input", {
-          type: "checkbox",
-          checked: done ? "checked" : null,
-          onchange: async (e) => {
-            if (e.target.checked) {
-              await DB.pushUndo({
-                type: "removal",
-                usernameKey: acc.usernameKey,
-                prevRemovalCompleted: !!acc.removalCompleted,
-                prevRemovalCompletedAt: acc.removalCompletedAt || null,
-              });
-              state.undoCount++;
-              await persistDecision(acc, { removalCompleted: true, removalCompletedAt: Date.now() });
-            } else {
-              await persistDecision(acc, { removalCompleted: false, removalCompletedAt: null });
-            }
-            render();
-          },
-        }),
+        el(
+          "label",
+          { class: "batchRowCheck" },
+          el("input", {
+            type: "checkbox",
+            checked: done ? "checked" : null,
+            onchange: async (e) => {
+              if (e.target.checked) {
+                await DB.pushUndo({
+                  type: "removal",
+                  usernameKey: acc.usernameKey,
+                  prevRemovalCompleted: !!acc.removalCompleted,
+                  prevRemovalCompletedAt: acc.removalCompletedAt || null,
+                });
+                state.undoCount++;
+                await persistDecision(acc, { removalCompleted: true, removalCompletedAt: Date.now() });
+              } else {
+                await persistDecision(acc, { removalCompleted: false, removalCompletedAt: null });
+              }
+              render();
+            },
+          })
+        ),
         el(
           "div",
           { class: "batchRowInfo" },
@@ -812,13 +831,12 @@
         el(
           "a",
           {
-            class: "batchRowReopen",
+            class: "batchRowOpen",
             href: snapchatUrl(acc.username),
             target: "_blank",
             rel: "noopener",
-            onclick: (e) => e.stopPropagation(),
           },
-          "Reopen"
+          "Open"
         )
       );
       list.appendChild(row);

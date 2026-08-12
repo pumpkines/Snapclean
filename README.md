@@ -72,12 +72,15 @@ Snapchat My Data ZIP
    - **REMOVED ✓ — OPEN NEXT** marks the current account done and opens
      the *next* person's Snapchat profile in one tap, so you can
      alternate "remove in Snapchat" / "tap this button" without stopping.
-   - On a computer: **Open Next 3 / 5 / 10** opens several profiles as
-     tabs at once, then drops you into a checklist — remove each one in
-     Snapchat, then check it off. Every actual removal still happens by
-     hand, inside Snapchat's own UI; SnapClean never logs into Snapchat
-     or performs the removal itself (see **Why SnapClean won't automate
-     the removal itself**, below).
+   - **Start a batch of 3 / 5 / 10** lines up several accounts as a
+     checklist, each with its own **Open** link — tap Open on a row (each
+     one opens in its own tab; this is a real link click per row, not an
+     automatic pop-up burst, since browsers only reliably allow one new
+     tab per click), remove them in Snapchat, then check the row off.
+     Every actual removal still happens by hand, inside Snapchat's own
+     UI; SnapClean never logs into Snapchat or performs the removal
+     itself (see **Why SnapClean won't automate the removal itself**,
+     below).
    - Keyboard shortcuts on a computer: **O** opens Snapchat, **Enter**/
      **R** marks removed, **S** skips. In review: **←** Remove, **→**
      Keep, **↑** Later, **Z** Undo.
