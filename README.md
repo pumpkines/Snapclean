@@ -60,28 +60,38 @@ Snapchat My Data ZIP
    their real profile in the Snapchat app, and returns you to the exact
    same card when you switch back.
 6. When you're ready to actually clean up: open **Removal Queue** from the
-   dashboard. For each entry, tap **Open in Snapchat**, remove them there,
-   then tap **Removed ✓** back in SnapClean.
+   dashboard. For each entry, open their profile and remove them, then tap
+   **Removed ✓** back in SnapClean.
+
+   **Important: removing a friend only works in Snapchat's mobile app.**
+   Snapchat's web app doesn't reliably support it (the "Remove Friend"
+   option is missing or inconsistent there). On iPhone, SnapClean's links
+   hand off to the installed Snapchat app via Apple's universal-link
+   system, landing you exactly where removal works — so on your iPhone
+   this is seamless. On a computer, the same link only opens a web page
+   that can show you who someone is; it can't remove them. SnapClean
+   detects this and adjusts automatically: the button reads **"Open in
+   Snapchat"** on iPhone and **"View Profile"** on other platforms, with
+   an on-screen note on desktop reminding you the actual removal needs
+   your phone.
 
    A few things make this loop faster for a big list:
    - **Swipe right** on the card once you've removed them, or **swipe
      left** to skip for now — same gesture as review.
-   - Tapping **Open in Snapchat** and then switching back to SnapClean
-     shows a **"Back already? Mark removed?"** confirm automatically, so
-     you don't have to hunt for the button.
+   - Tapping the profile link and then switching back to SnapClean shows
+     a **"Back already? Mark removed?"** confirm automatically, so you
+     don't have to hunt for the button.
    - **REMOVED ✓ — OPEN NEXT** marks the current account done and opens
-     the *next* person's Snapchat profile in one tap, so you can
-     alternate "remove in Snapchat" / "tap this button" without stopping.
+     the *next* person's profile in one tap.
    - **Start a batch of 3 / 5 / 10** lines up several accounts as a
-     checklist, each with its own **Open** link — tap Open on a row (each
-     one opens in its own tab; this is a real link click per row, not an
-     automatic pop-up burst, since browsers only reliably allow one new
-     tab per click), remove them in Snapchat, then check the row off.
-     Every actual removal still happens by hand, inside Snapchat's own
-     UI; SnapClean never logs into Snapchat or performs the removal
-     itself (see **Why SnapClean won't automate the removal itself**,
-     below).
-   - Keyboard shortcuts on a computer: **O** opens Snapchat, **Enter**/
+     checklist, each with its own **Open** link (a real per-row link
+     click, not an automatic pop-up burst — browsers only reliably allow
+     one new tab per click, which is exactly why this is per-row rather
+     than automatic). On desktop this is best used to double-check who
+     several people are at once before doing the actual removals on your
+     phone; on iPhone it's a genuinely faster way to work through a big
+     batch.
+   - Keyboard shortcuts on a computer: **O** opens the profile, **Enter**/
      **R** marks removed, **S** skips. In review: **←** Remove, **→**
      Keep, **↑** Later, **Z** Undo.
    - Tap **Show Bitmoji / Public Profile** on any card to preview them
@@ -246,6 +256,10 @@ own account:
   at all would mean scraping session credentials or driving private,
   undocumented internals — fragile today and something Snapchat could
   break (or detect) at any time.
+- Removing a friend isn't even reliably possible from Snapchat's *own* web
+  app — it's a mobile-app-only action. Any automation would have to drive
+  the actual native app (through OS-level accessibility/automation APIs,
+  which is its own can of worms) rather than a simple web request.
 - It's also one of the boundaries this project started with — no
   credentials stored, nothing that could get an account banned, nothing
   that requires trusting a third-party server with your session — and it

@@ -29,10 +29,18 @@ function assertEqual(actual, expected, msg) {
 
 async function main() {
   const html = readFileSync(`${root}/index.html`, "utf8");
+  // SnapClean is iPhone-first, and its Removal Queue copy/behavior branches
+  // on that (opening a Snapchat link on iOS hands off to the native app,
+  // where removal actually works; elsewhere it doesn't). Simulate an iPhone
+  // UA for the main flow so this exercises the primary target platform.
   const dom = new JSDOM(html, {
     url: "http://localhost/",
     runScripts: "outside-only",
     pretendToBeVisual: true,
+    resources: {
+      userAgent:
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
+    },
   });
   const { window } = dom;
 
@@ -135,6 +143,8 @@ async function main() {
 
   window.location.hash = "#/removal";
   await new Promise((r) => setTimeout(r, 50));
+  assert(/OPEN IN SNAPCHAT/.test(view.textContent), "on iOS (simulated UA), the removal button reads 'OPEN IN SNAPCHAT' since the deep link hands off to the native app");
+  assert(!/doesn't reliably support removing/.test(view.textContent), "on iOS, the 'Snapchat web can't remove friends' caveat is not shown (the native-app handoff makes it moot)");
   if (/OPEN IN SNAPCHAT/.test(view.textContent)) {
     const openLink = view.querySelector(".snapBtn.wide");
     assert(!!openLink, "Removal Queue 'Open in Snapchat' link renders");
@@ -275,10 +285,80 @@ async function main() {
   assert(/Export Decisions CSV/.test(view.textContent), "settings view renders export controls");
 
   console.log(`\n${failures === 0 ? "SMOKE TEST PASSED" : "SMOKE TEST FAILED"} (${failures} failure(s))`);
-  process.exit(failures === 0 ? 0 : 1);
+  if (failures > 0) process.exit(1);
 }
 
-main().catch((err) => {
-  console.error("Smoke test crashed:", err);
-  process.exit(1);
-});
+// --- Secondary check: on a non-iOS device, the Removal Queue must clearly
+// state that Snapchat's web app can't remove friends, and the primary
+// button must not claim it can. This is a lighter-weight standalone check
+// (fresh boot + import + one navigation) rather than the full flow above.
+async function desktopPlatformCheck() {
+  const html = readFileSync(`${root}/index.html`, "utf8");
+  const dom = new JSDOM(html, {
+    url: "http://localhost/",
+    runScripts: "outside-only",
+    pretendToBeVisual: true,
+    resources: {
+      userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
+    },
+  });
+  const { window } = dom;
+  const fakeIDB = await import("fake-indexeddb");
+  window.indexedDB = new fakeIDB.IDBFactory();
+  window.IDBKeyRange = fakeIDB.IDBKeyRange;
+  window.HTMLElement.prototype.setPointerCapture = () => {};
+  window.HTMLElement.prototype.scrollTo = () => {};
+  window.open = () => ({ closed: false });
+  window.navigator.serviceWorker = { register: () => Promise.resolve() };
+
+  const loadScript = (path) => window.eval(readFileSync(`${root}/${path}`, "utf8"));
+  loadScript("vendor/fflate.js");
+  loadScript("js/engine.js");
+  loadScript("js/parser.js");
+  loadScript("js/db.js");
+  loadScript("js/app.js");
+  window.document.dispatchEvent(new window.Event("DOMContentLoaded"));
+  await new Promise((r) => setTimeout(r, 50));
+
+  const view = window.document.getElementById("view");
+  const zipBytes = readFileSync(`${root}/test/fixtures/snapchat_my_data_test.zip`);
+  const fakeFile = {
+    name: "snapchat_my_data_test.zip",
+    arrayBuffer: async () => zipBytes.buffer.slice(zipBytes.byteOffset, zipBytes.byteOffset + zipBytes.byteLength),
+  };
+  const fileInput = view.querySelector('input[type="file"][accept*="zip"]');
+  const changeEvent = new window.Event("change");
+  Object.defineProperty(changeEvent, "target", { value: { files: [fakeFile] } });
+  fileInput.dispatchEvent(changeEvent);
+  let waited = 0;
+  while (waited < 4000) {
+    await new Promise((r) => setTimeout(r, 100));
+    waited += 100;
+    if (/accounts analyzed/.test(view.textContent)) break;
+  }
+
+  window.location.hash = "#/review/priority_cleanup/highest_priority";
+  await new Promise((r) => setTimeout(r, 50));
+  for (let i = 0; i < 2; i++) {
+    const btn = [...view.querySelectorAll(".actions button")].find((b) => /REMOVE/.test(b.textContent));
+    if (!btn) break;
+    btn.click();
+    await new Promise((r) => setTimeout(r, 250));
+  }
+
+  window.location.hash = "#/removal";
+  await new Promise((r) => setTimeout(r, 50));
+  assert(/doesn't reliably support removing/.test(view.textContent), "on desktop, the Removal Queue shows the 'Snapchat web can't remove friends' caveat");
+  assert(/VIEW PROFILE/.test(view.textContent), "on desktop, the primary action reads 'VIEW PROFILE' rather than implying removal happens there");
+  assert(!/^OPEN IN SNAPCHAT$/m.test(view.querySelector(".snapBtn.wide")?.textContent || ""), "the desktop button text does not claim 'OPEN IN SNAPCHAT'");
+}
+
+main()
+  .then(desktopPlatformCheck)
+  .then(() => {
+    process.exit(failures === 0 ? 0 : 1);
+  })
+  .catch((err) => {
+    console.error("Smoke test crashed:", err);
+    process.exit(1);
+  });

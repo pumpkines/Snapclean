@@ -224,6 +224,20 @@
     return `https://www.snapchat.com/add/${encodeURIComponent(username)}`;
   }
 
+  // Snapchat's mobile app is the only place a friend can actually be
+  // removed — its web app does not reliably support it (the "Remove
+  // Friend" option is absent or inconsistent on web). On iOS, opening a
+  // snapchat.com/add/ link from Safari hands off to the installed native
+  // app via a universal link, landing exactly where removal works. On any
+  // other platform (desktop, Android browsers, etc.) that same link just
+  // opens a web page that can show who someone is but very likely can't
+  // remove them — so the UI says so explicitly rather than implying it will
+  // work.
+  function isLikelyIOS() {
+    return /iPad|iPhone|iPod/.test(navigator.userAgent || "") && !window.MSStream;
+  }
+  const CAN_REMOVE_FROM_THIS_DEVICE = isLikelyIOS();
+
   // ---- Bitmoji / Public Profile preview --------------------------------
   // Uses Snapchat's own, officially documented Web Embeds feature (public
   // profiles are one of the four embeddable content types Snap supports —
@@ -594,7 +608,14 @@
         el("button", { class: "iconBtn", onclick: () => navigate("#/dashboard") }, "←"),
         el("h2", null, "Removal Queue")
       ),
-      el("div", { class: "progress" }, `${completedCount} / ${allRemove.length} removals completed`)
+      el("div", { class: "progress" }, `${completedCount} / ${allRemove.length} removals completed`),
+      !CAN_REMOVE_FROM_THIS_DEVICE
+        ? el(
+            "p",
+            { class: "platformNote" },
+            "Snapchat's web app doesn't reliably support removing a friend — that only works in the Snapchat mobile app. Opening a profile from here just lets you double-check who someone is; use your phone to do the actual removing, and come back here to check items off."
+          )
+        : null
     );
 
     if (!allRemove.length) {
@@ -716,7 +737,7 @@
         el(
           "a",
           { class: "snapBtn wide", href: snapchatUrl(account.username), target: "_blank", rel: "noopener", onclick: openInSnapchat },
-          "OPEN IN SNAPCHAT"
+          CAN_REMOVE_FROM_THIS_DEVICE ? "OPEN IN SNAPCHAT" : "VIEW PROFILE"
         ),
         remaining.length > 1
           ? el("button", { class: "keep wide", onclick: removedAndNext }, "REMOVED ✓ — OPEN NEXT")
@@ -728,7 +749,9 @@
       el(
         "p",
         { class: "hint" },
-        "Swipe right once you've removed them in Snapchat, or left to skip for now. On a computer: O opens Snapchat, Enter/R marks removed, S skips."
+        CAN_REMOVE_FROM_THIS_DEVICE
+          ? "Swipe right once you've removed them in Snapchat, or left to skip for now. On a computer: O opens Snapchat, Enter/R marks removed, S skips."
+          : "Check REMOVED once you've actually removed them using your phone's Snapchat app. Swipe right/left to move faster through the list."
       )
     );
 
@@ -738,7 +761,13 @@
         el(
           "div",
           { class: "batchLauncher" },
-          el("p", { class: "muted" }, "Line up several profiles as a checklist, then open and check off each one:"),
+          el(
+            "p",
+            { class: "muted" },
+            CAN_REMOVE_FROM_THIS_DEVICE
+              ? "Line up several profiles as a checklist, then open and check off each one:"
+              : "Line up several profiles to double-check who they are — you'll still need your phone's Snapchat app to actually remove each one:"
+          ),
           el(
             "div",
             { class: "batchButtons" },
@@ -789,7 +818,9 @@
       el(
         "p",
         { class: "muted" },
-        `Tap Open on each row below — each opens in its own tab. Remove them there, then check it off here.`
+        CAN_REMOVE_FROM_THIS_DEVICE
+          ? "Tap Open on each row below — each opens in its own tab. Remove them there, then check it off here."
+          : "Tap Open to view each profile — Snapchat's web app can't remove friends, so use your phone's Snapchat app for the actual removal, then check the row off here."
       )
     );
 
