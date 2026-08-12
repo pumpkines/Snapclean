@@ -121,9 +121,12 @@ async function main() {
   await new Promise((r) => setTimeout(r, 50));
   window.location.hash = "#/review/priority_cleanup/highest_priority";
   await new Promise((r) => setTimeout(r, 50));
-  const removeBtn = [...view.querySelectorAll(".actions button")].find((b) => /REMOVE/.test(b.textContent));
-  if (removeBtn) {
-    removeBtn.click();
+  // Move several accounts to REMOVE so batch mode (which needs >1 remaining)
+  // has something to work with.
+  for (let i = 0; i < 3; i++) {
+    const btn = [...view.querySelectorAll(".actions button")].find((b) => /REMOVE/.test(b.textContent));
+    if (!btn) break;
+    btn.click();
     await new Promise((r) => setTimeout(r, 250));
   }
 
@@ -147,18 +150,71 @@ async function main() {
     assert(!!removedBtn, "a REMOVED confirm control is present (either the combined action or the welcome-back banner)");
   }
 
-  // --- Bitmoji / Public Profile preview toggle ------------------------------
+  // --- Bitmoji / Public Profile preview: now auto-shown by default -------
   window.location.hash = "#/review/priority_cleanup/highest_priority";
   await new Promise((r) => setTimeout(r, 50));
   const profileToggle = view.querySelector(".profileToggle");
   assert(!!profileToggle, "Bitmoji/Public Profile toggle renders on the review card");
-  if (profileToggle) {
-    profileToggle.click();
-    await new Promise((r) => setTimeout(r, 20));
-    const container = view.querySelector(".profilePreview");
-    assert(!!container && !container.classList.contains("hidden"), "profile preview expands on tap");
-    assert(!!container.querySelector(".snapchat-embed"), "official Snapchat embed blockquote is injected");
-    assert(!!window.document.querySelector('script[data-snap-embed-loader]'), "Snapchat's embed.js loader script is injected to trigger rendering");
+  const autoContainer = view.querySelector(".profilePreview");
+  assert(!!autoContainer && !autoContainer.classList.contains("hidden"), "profile preview is auto-expanded by default (no tap needed)");
+  assert(!!autoContainer.querySelector(".snapchat-embed"), "official Snapchat embed blockquote is auto-injected");
+  assert(!!window.document.querySelector('script[data-snap-embed-loader]'), "Snapchat's embed.js loader script is injected to trigger rendering");
+  assert(/Hide Preview/.test(profileToggle.textContent), "toggle reads 'Hide Preview' when auto-shown");
+
+  // Toggling it off should collapse the container.
+  profileToggle.click();
+  await new Promise((r) => setTimeout(r, 20));
+  assert(autoContainer.classList.contains("hidden"), "tapping the toggle hides the preview");
+
+  // --- Settings: auto-show preference toggle ------------------------------
+  window.location.hash = "#/settings";
+  await new Promise((r) => setTimeout(r, 50));
+  const autoShowSettingBtn = [...view.querySelectorAll("button")].find((b) => /Auto-show Bitmoji/.test(b.textContent));
+  assert(!!autoShowSettingBtn, "Settings has an auto-show profile preview toggle");
+  assert(/On/.test(autoShowSettingBtn.textContent), "auto-show defaults to On");
+  autoShowSettingBtn.click();
+  await new Promise((r) => setTimeout(r, 50));
+  const autoShowSettingBtnAfter = [...view.querySelectorAll("button")].find((b) => /Auto-show Bitmoji/.test(b.textContent));
+  assert(!!autoShowSettingBtnAfter && /Off/.test(autoShowSettingBtnAfter.textContent), "toggling the setting flips it to Off");
+  window.location.hash = "#/review/priority_cleanup/highest_priority";
+  await new Promise((r) => setTimeout(r, 50));
+  const containerAfterOff = view.querySelector(".profilePreview");
+  assert(!!containerAfterOff && containerAfterOff.classList.contains("hidden"), "with auto-show Off, new cards render collapsed by default");
+
+  // --- keyboard shortcuts -------------------------------------------------
+  window.location.hash = "#/review/priority_cleanup/highest_priority";
+  await new Promise((r) => setTimeout(r, 50));
+  if (view.querySelector("#reviewCard")) {
+    const nameBefore = view.querySelector(".displayName")?.textContent;
+    window.document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    await new Promise((r) => setTimeout(r, 250));
+    const nameAfter = view.querySelector(".displayName")?.textContent;
+    assert(nameBefore !== nameAfter || !view.querySelector("#reviewCard"), "ArrowRight keyboard shortcut advances the review queue (Keep)");
+  }
+
+  // --- Batch removal mode -------------------------------------------------
+  window.location.hash = "#/removal";
+  await new Promise((r) => setTimeout(r, 50));
+  const batchBtn = view.querySelector(".batchLaunchBtn");
+  if (batchBtn) {
+    batchBtn.click();
+    await new Promise((r) => setTimeout(r, 50));
+    assert(/Batch/.test(view.textContent), "batch removal mode renders after 'Open Next N'");
+    const checkbox = view.querySelector(".batchRow input[type=checkbox]");
+    assert(!!checkbox, "batch checklist renders a checkbox per opened profile");
+    if (checkbox) {
+      checkbox.checked = true;
+      checkbox.dispatchEvent(new window.Event("change"));
+      await new Promise((r) => setTimeout(r, 100));
+      assert(/done/.test(view.querySelector(".batchRow")?.className || ""), "checking a batch row marks it done and greys it out");
+    }
+    const doneBtn = [...view.querySelectorAll("button")].find((b) => /Done with this batch/.test(b.textContent));
+    assert(!!doneBtn, "'Done with this batch' control is present");
+    if (doneBtn) {
+      doneBtn.click();
+      await new Promise((r) => setTimeout(r, 50));
+      assert(!view.querySelector(".batchList"), "leaving batch mode returns to the normal Removal Queue view");
+    }
   }
 
   // --- Search view ----------------------------------------------------

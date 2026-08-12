@@ -85,9 +85,15 @@
     return rows;
   }
 
-  /** Section heading text -> relationship flag, with tolerant synonyms. */
+  /**
+   * Section heading text -> relationship flag, with tolerant synonyms.
+   * Order matters: more specific categories are checked first so a heading
+   * like "Sent Friend Requests" can't be swallowed by a loose "contains the
+   * word friends" fallback. CURRENT_FRIEND is intentionally last and loose
+   * (real exports often render it as "Friends (4,528)" or similar with a
+   * trailing count, so it must NOT require an exact/anchored match).
+   */
   const HEADING_FLAG_PATTERNS = [
-    [/^(my )?friends$/i, "CURRENT_FRIEND"],
     [/friend requests?\s*sent/i, "SENT_REQUEST"],
     [/sent\s*friend requests?/i, "SENT_REQUEST"],
     [/friend requests?\s*received/i, "PENDING_REQUEST"],
@@ -98,11 +104,21 @@
     [/blocked/i, "BLOCKED"],
     [/ignored/i, "IGNORED"],
     [/hidden.*(friend )?suggestions?/i, "HIDDEN_SUGGESTION"],
+    [/\bfriends?\b/i, "CURRENT_FRIEND"],
   ];
 
+  function normalizeHeadingText(text) {
+    return String(text || "")
+      .replace(/\(.*?\)/g, " ") // strip parenthetical counts, e.g. "Friends (4,528)"
+      .replace(/[\d,]+/g, " ") // strip bare counts, e.g. "Friends 4528" or "Friends: 4,528"
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
   function flagForHeading(headingText) {
+    const normalized = normalizeHeadingText(headingText);
     for (const [pattern, flag] of HEADING_FLAG_PATTERNS) {
-      if (pattern.test(headingText.trim())) return flag;
+      if (pattern.test(normalized)) return flag;
     }
     return null;
   }
@@ -133,17 +149,22 @@
   // ---- friends.html --------------------------------------------------------
 
   /**
-   * @returns {{ map: Map<string, object>, warnings: string[] }}
+   * @returns {{ map: Map<string, object>, warnings: string[], sections: object[] }}
    */
   function parseFriendsHtml(html) {
     const warnings = [];
     const map = new Map();
     const headings = findHeadings(html);
     const tables = findTables(html);
+    // Per-section diagnostics so an import can be sanity-checked afterwards
+    // (surfaced in Settings → Last import → Import diagnostics) instead of
+    // silently trusting the parser. Each entry: which heading a table was
+    // matched to, which flag that implied, and how many rows it produced.
+    const sections = [];
 
     if (!headings.length || !tables.length) {
       warnings.push("friends.html: no recognizable section headings/tables found.");
-      return { map, warnings };
+      return { map, warnings, sections };
     }
 
     for (const table of tables) {
@@ -154,18 +175,30 @@
         if (h.index <= table.index) heading = h;
         else break;
       }
-      if (!heading) continue;
+      if (!heading) {
+        sections.push({ heading: "(no heading found)", flag: null, rows: 0 });
+        warnings.push("friends.html: found a table with no preceding section heading; it was skipped.");
+        continue;
+      }
       const flag = flagForHeading(heading.text);
-      if (!flag) continue;
+      if (!flag) {
+        sections.push({ heading: heading.text, flag: null, rows: 0 });
+        warnings.push(`friends.html: section "${heading.text}" wasn't recognized and was skipped.`);
+        continue;
+      }
 
       let rows;
       try {
         rows = parseTableRows(table.body);
       } catch (err) {
+        sections.push({ heading: heading.text, flag, rows: 0, error: err.message });
         warnings.push(`friends.html: failed to parse table under "${heading.text}" (${err.message}).`);
         continue;
       }
-      if (!rows.length) continue;
+      if (!rows.length) {
+        sections.push({ heading: heading.text, flag, rows: 0 });
+        continue;
+      }
 
       // Detect (and drop) a header row: a row is a header if none of its
       // cells look like a username-and-date data row, i.e. it contains a
@@ -176,10 +209,12 @@
         dataRows = rows.slice(1);
       }
 
+      let parsedCount = 0;
       for (const cells of dataRows) {
         const username = (cells[0] || "").trim();
         if (!username) continue;
         const usernameKey = normalizeUsernameKey(username);
+        parsedCount++;
 
         let dateValue = null;
         let sourceValue = null;
@@ -223,13 +258,20 @@
 
         map.set(usernameKey, existing);
       }
+
+      sections.push({ heading: heading.text, flag, rows: parsedCount });
     }
 
     if (!map.size) {
       warnings.push("friends.html: parsed 0 accounts from recognized sections.");
     }
+    if (!sections.some((s) => s.flag === "CURRENT_FRIEND" && s.rows > 0)) {
+      warnings.push(
+        "friends.html: no accounts were tagged as a Current Friend from any recognized section. If you have active friends on Snapchat, check Import Diagnostics — this usually means the 'Friends' section heading in your export wasn't recognized."
+      );
+    }
 
-    return { map, warnings };
+    return { map, warnings, sections };
   }
 
   // ---- account.html (self username) ----------------------------------------
@@ -446,7 +488,7 @@
 
     notify("friends", {});
     const friendsHtml = textOf(friendsPath);
-    const { map: accountMap, warnings: friendWarnings } = parseFriendsHtml(friendsHtml);
+    const { map: accountMap, warnings: friendWarnings, sections: friendSections } = parseFriendsHtml(friendsHtml);
     warnings.push(...friendWarnings);
 
     const accountPath = findEntry("html/account.html");
@@ -567,14 +609,21 @@
       accounts.push(acc);
     }
 
+    const byFlag = {};
+    for (const flag of ["CURRENT_FRIEND", "DELETED_FRIEND", "SENT_REQUEST", "PENDING_REQUEST", "BLOCKED", "IGNORED", "HIDDEN_SUGGESTION"]) {
+      byFlag[flag] = accounts.filter((a) => a.relationshipFlags.includes(flag)).length;
+    }
+
     return {
       accounts,
       warnings,
       selfUsernameKey,
+      sections: friendSections,
       counts: {
         total: accounts.length,
         chatMatched: chatIndex.size,
         snapMatched: snapIndex.size,
+        byFlag,
       },
     };
   }

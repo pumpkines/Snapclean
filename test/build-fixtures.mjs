@@ -19,7 +19,7 @@ function friendRow(username, dateStr, source) {
 }
 
 const friendsHtml = `<!doctype html><html><body>
-<h2>Friends</h2>
+<h2>Friends (9)</h2>
 <table>
 <tr><th>Username</th><th>Date Added</th><th>Reason Added</th></tr>
 ${friendRow("alice_current", daysAgo(1100), "ADDED_BY_USERNAME")}
@@ -33,21 +33,21 @@ ${friendRow("leo_nochat_hassnap", daysAgo(700), "ADDED_BY_USERNAME")}
 ${friendRow("mia_nosnap_haschat", daysAgo(650), "ADDED_BY_USERNAME")}
 </table>
 
-<h2>Deleted Friends</h2>
+<h2>Deleted Friends (2)</h2>
 <table>
 <tr><th>Username</th><th>Date Deleted</th><th>Reason</th></tr>
 ${friendRow("bob_former", daysAgo(400), "")}
 ${friendRow("jack_dup", daysAgo(900), "")}
 </table>
 
-<h2>Friend Requests Sent</h2>
+<h2>Friend Requests Sent (2)</h2>
 <table>
 <tr><th>Username</th><th>Date</th><th>Reason</th></tr>
 ${friendRow("carol_sentonly", daysAgo(400), "")}
 ${friendRow("karen_nodates", "", "")}
 </table>
 
-<h2>Pending Friend Requests</h2>
+<h2>Pending Friend Requests (1)</h2>
 <table>
 <tr><th>Username</th><th>Date</th><th>Reason</th></tr>
 ${friendRow("dave_pending", daysAgo(10), "")}

@@ -72,13 +72,22 @@ Snapchat My Data ZIP
    - **REMOVED ✓ — OPEN NEXT** marks the current account done and opens
      the *next* person's Snapchat profile in one tap, so you can
      alternate "remove in Snapchat" / "tap this button" without stopping.
+   - On a computer: **Open Next 3 / 5 / 10** opens several profiles as
+     tabs at once, then drops you into a checklist — remove each one in
+     Snapchat, then check it off. Every actual removal still happens by
+     hand, inside Snapchat's own UI; SnapClean never logs into Snapchat
+     or performs the removal itself (see **Why SnapClean won't automate
+     the removal itself**, below).
+   - Keyboard shortcuts on a computer: **O** opens Snapchat, **Enter**/
+     **R** marks removed, **S** skips. In review: **←** Remove, **→**
+     Keep, **↑** Later, **Z** Undo.
    - Tap **Show Bitmoji / Public Profile** on any card to preview them
      right inside SnapClean (via Snapchat's own official [public-profile
      web embed](https://developers.snap.com/api/snapchat-for-web/social-plugins/embedding-web-content) —
      not scraping, just Snapchat's sanctioned widget) if you don't
-     remember who someone is without leaving the app. This does make a
-     request to snapchat.com for that person, so it's opt-in per card
-     rather than automatic.
+     remember who someone is. This is on by default (Settings lets you
+     switch it back to tap-to-reveal per card if you'd rather not have
+     every card contact snapchat.com automatically).
 7. Got a newer Snapchat export later? **Settings → Update Snapchat Data.**
    Your existing Keep/Remove/Later decisions and removal-completed status
    are preserved; only the relationship/activity metadata is refreshed.
@@ -144,12 +153,27 @@ by app version. The parser was built defensively against the documented
 shape (`html/friends.html` section tables, `html/chat_history.html` /
 `html/snap_history.html` index pages linking to per-friend subpages) and
 degrades gracefully — a missing or reshaped section produces a warning
-(visible in Settings → Last import, and in the browser console) rather
-than a crash. If your real export's chat/Snap subpage format differs
+rather than a crash. If your real export's chat/Snap subpage format differs
 enough that authorship or timestamps aren't detected, `lastAuthoredBy`
 correctly falls back to `UNKNOWN` rather than guessing. If you hit a
 real-world export SnapClean doesn't parse well, the fix is entirely
 contained in `js/parser.js`.
+
+**Verify your own import**: Settings → Last import → **Import
+diagnostics** shows exactly which section headings SnapClean found in
+your export, what relationship flag each one was matched to, how many
+rows it produced, and a per-flag total (Current Friends: N, Pending: N,
+etc.), plus any parse warnings. If a category looks wrong — e.g. 0
+Current Friends when you actually have friends — that table will show you
+which heading text wasn't recognized, which is usually enough to fix
+directly in `js/parser.js`'s `HEADING_FLAG_PATTERNS`. (One real example:
+an earlier version required the "Friends" heading to match *exactly*,
+which silently broke on exports that render it with a count like
+`"Friends (4,528)"` — every current friend was then left unlabeled.
+That specific case is fixed and covered by a regression test in
+`test/run-tests.mjs`, but the diagnostics panel exists so any *other*
+heading-format surprise is visible immediately instead of silently
+mislabeling accounts.)
 
 ## Local development
 
@@ -200,3 +224,33 @@ This app is fully static — no backend, no build step.
 - Not a Snapchat client. It doesn't show your live feed, stories, or chats.
 - Not a bot. It cannot and will not remove friends for you.
 - Not a data-broker tool. Your export never leaves this device.
+
+## Why SnapClean won't automate the removal itself
+
+This comes up, so it's worth stating plainly: SnapClean will never log into
+Snapchat, drive the Snapchat app/web client on your behalf, or call a
+private/undocumented endpoint to perform the actual "remove friend" action
+— not as a batch script, not as a per-swipe "overlay" that fires
+automatically, not in any form. This isn't a technical limitation; it's a
+deliberate boundary, for reasons that don't go away just because it's your
+own account:
+
+- Snapchat's Terms of Service prohibit automated/bot access to accounts.
+  Software that logs in and performs bulk actions is exactly what their
+  anti-abuse systems are built to catch — the realistic outcome is your
+  account getting flagged or locked, not a clean bulk-unfriend.
+- There's no official API for third-party friend management, so doing this
+  at all would mean scraping session credentials or driving private,
+  undocumented internals — fragile today and something Snapchat could
+  break (or detect) at any time.
+- It's also one of the boundaries this project started with — no
+  credentials stored, nothing that could get an account banned, nothing
+  that requires trusting a third-party server with your session — and it
+  stays that way regardless of how the request for it is phrased.
+
+What SnapClean does instead is make the *manual* loop as fast as it can be
+without crossing that line — see the removal-queue tips above (swipe
+gestures, batch tab-opening, keyboard shortcuts, the "welcome back" auto
+prompt). Every one of those still ends with you clicking "Remove Friend"
+inside Snapchat's own interface.
+

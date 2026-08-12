@@ -35,10 +35,11 @@
     accounts: [],
     byKey: new Map(),
     ready: false,
-    review: { filterId: "priority_cleanup", sortId: "highest_priority", cursorKey: null, skipSet: new Set() },
+    review: { filterId: "priority_cleanup", sortId: "highest_priority", cursorKey: null, skipSet: new Set(), batch: null },
     search: { term: "", limit: 150 },
     undoCount: 0,
     pendingRemoval: null,
+    settings: { autoShowProfilePreview: true },
     lastImport: null,
     pendingReturnTo: "#/dashboard",
   };
@@ -58,6 +59,7 @@
     recomputeAll();
     state.undoCount = await DB.peekUndoCount();
     state.lastImport = await DB.getMeta("lastImport", null);
+    state.settings.autoShowProfilePreview = await DB.getMeta("autoShowProfilePreview", true);
     const savedReview = await DB.getMeta("reviewState", null);
     if (savedReview) state.review = Object.assign(state.review, savedReview, { skipSet: new Set() });
     state.ready = true;
@@ -89,6 +91,41 @@
     if (document.visibilityState === "visible") render();
   });
 
+  // ---- desktop keyboard shortcuts -----------------------------------------
+  // Not automation of Snapchat itself — just faster navigation of SnapClean's
+  // own UI, useful when running on a computer with Snapchat Web open in a
+  // second window and alternating between the two by hand.
+  document.addEventListener("keydown", (e) => {
+    const tag = document.activeElement?.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+    const view = document.getElementById("view");
+    if (!view) return;
+    const { parts } = currentRoute();
+    const top = parts[0] || "dashboard";
+
+    const click = (selector, matchText) => {
+      const els = view.querySelectorAll(selector);
+      const target = matchText ? [...els].find((n) => matchText.test(n.textContent)) : els[0];
+      if (target) {
+        e.preventDefault();
+        target.click();
+      }
+    };
+
+    if (top === "review" || top === "later" || top === "detail") {
+      if (e.key === "ArrowLeft" || e.key.toLowerCase() === "x") click(".actions .remove");
+      else if (e.key === "ArrowRight" || e.key.toLowerCase() === "k") click(".actions .keep");
+      else if (e.key === "ArrowUp" || e.key.toLowerCase() === "l") click(".actions .later");
+      else if (e.key.toLowerCase() === "z") click(".textBtn", /Undo/);
+    } else if (top === "removal") {
+      if (e.key.toLowerCase() === "o") click(".snapBtn.wide");
+      else if (e.key === "Enter" || e.key.toLowerCase() === "r") click(".actions-3 .keep");
+      else if (e.key.toLowerCase() === "s") click(".actions-3 .textBtn", /SKIP/);
+    }
+  });
+
   function currentRoute() {
     const hash = location.hash || "#/dashboard";
     const [path, query] = hash.slice(1).split("?");
@@ -116,7 +153,10 @@
       return;
     }
 
-    if (top !== "removal") state.pendingRemoval = null;
+    if (top !== "removal") {
+      state.pendingRemoval = null;
+      state.review.batch = null;
+    }
 
     switch (top) {
       case "dashboard":
@@ -210,43 +250,49 @@
 
   function buildProfilePreview(username) {
     const url = snapchatUrl(username);
-    const toggleBtn = el("button", { class: "profileToggle" }, "Show Bitmoji / Public Profile");
-    const container = el("div", { class: "profilePreview hidden" });
+    const autoShow = state.settings.autoShowProfilePreview;
+    const toggleBtn = el("button", { class: "profileToggle" }, autoShow ? "Hide Preview" : "Show Bitmoji / Public Profile");
+    const container = el("div", { class: autoShow ? "profilePreview" : "profilePreview hidden" });
+
+    function loadEmbed() {
+      if (container.dataset.loaded) return;
+      container.dataset.loaded = "1";
+      container.appendChild(
+        el(
+          "blockquote",
+          {
+            class: "snapchat-embed",
+            "data-snapchat-embed-url": `${url}/embed`,
+          },
+          el("a", { href: url, target: "_blank", rel: "noopener" }, "View profile on Snapchat")
+        )
+      );
+      container.appendChild(
+        el("p", { class: "embedNote" }, "Snapchat's official public-profile embed — this contacts snapchat.com.")
+      );
+      triggerSnapEmbedScan();
+      setTimeout(() => {
+        if (container.isConnected && !container.querySelector("iframe")) {
+          container.appendChild(
+            el("p", { class: "muted embedFallback" }, "Preview didn't load for this account — use View in Snapchat instead.")
+          );
+        }
+      }, 4000);
+    }
 
     toggleBtn.addEventListener("click", () => {
       const hidden = container.classList.contains("hidden");
       if (hidden) {
         container.classList.remove("hidden");
         toggleBtn.textContent = "Hide Preview";
-        if (!container.dataset.loaded) {
-          container.dataset.loaded = "1";
-          container.appendChild(
-            el(
-              "blockquote",
-              {
-                class: "snapchat-embed",
-                "data-snapchat-embed-url": `${url}/embed`,
-              },
-              el("a", { href: url, target: "_blank", rel: "noopener" }, "View profile on Snapchat")
-            )
-          );
-          container.appendChild(
-            el("p", { class: "embedNote" }, "Loads Snapchat's official public-profile embed — this contacts snapchat.com.")
-          );
-          triggerSnapEmbedScan();
-          setTimeout(() => {
-            if (container.isConnected && !container.querySelector("iframe")) {
-              container.appendChild(
-                el("p", { class: "muted embedFallback" }, "Preview didn't load for this account — use View in Snapchat instead.")
-              );
-            }
-          }, 4000);
-        }
+        loadEmbed();
       } else {
         container.classList.add("hidden");
         toggleBtn.textContent = "Show Bitmoji / Public Profile";
       }
     });
+
+    if (autoShow) loadEmbed();
 
     return el("div", { class: "profilePreviewBlock" }, toggleBtn, container);
   }
@@ -507,6 +553,7 @@
         `Undo last decision${state.undoCount ? ` (${state.undoCount})` : ""}`
       )
     );
+    wrap.appendChild(el("p", { class: "hint" }, "On a computer: ← Remove, → Keep, ↑ Later, Z Undo."));
 
     return wrap;
   }
@@ -564,6 +611,15 @@
         )
       );
       return wrap;
+    }
+
+    // --- Batch mode: open several remaining profiles as tabs at once, then
+    // check them off as a list while you remove each one in Snapchat. Every
+    // actual removal still happens by hand, in Snapchat's own UI — this just
+    // cuts down on the number of times you have to come back to SnapClean to
+    // trigger the next tab.
+    if (state.review.batch && state.review.batch.length) {
+      return renderBatchRemovalMode(allRemove, completedCount);
     }
 
     const markRemoved = async (opts = {}) => {
@@ -652,7 +708,139 @@
         el("button", { class: "textBtn", onclick: skip }, "SKIP")
       )
     );
-    wrap.appendChild(el("p", { class: "hint" }, "Swipe right once you've removed them in Snapchat, or left to skip for now."));
+    wrap.appendChild(
+      el(
+        "p",
+        { class: "hint" },
+        "Swipe right once you've removed them in Snapchat, or left to skip for now. On a computer: O opens Snapchat, Enter/R marks removed, S skips."
+      )
+    );
+
+    if (remaining.length > 1) {
+      const batchSizes = [3, 5, 10].filter((n) => n <= remaining.length || n === 3);
+      wrap.appendChild(
+        el(
+          "div",
+          { class: "batchLauncher" },
+          el("p", { class: "muted" }, "On a computer, open several profiles at once as tabs, then check them off as you go:"),
+          el(
+            "div",
+            { class: "batchButtons" },
+            ...batchSizes.map((n) =>
+              el(
+                "button",
+                {
+                  class: "batchLaunchBtn",
+                  onclick: () => startBatch(Math.min(n, remaining.length)),
+                },
+                `Open Next ${Math.min(n, remaining.length)}`
+              )
+            )
+          )
+        )
+      );
+    }
+
+    function startBatch(n) {
+      const keys = remaining.slice(0, n).map((a) => a.usernameKey);
+      // Open each tab synchronously, in the same click handler, so browsers
+      // treat every one as tied to the user's actual gesture rather than
+      // blocking them as unsolicited popups.
+      for (const key of keys) {
+        const acc = state.byKey.get(key);
+        if (acc) window.open(snapchatUrl(acc.username), "_blank", "noopener");
+      }
+      state.review.batch = keys;
+      render();
+    }
+
+    return wrap;
+  }
+
+  function renderBatchRemovalMode(allRemove, completedCount) {
+    const keys = state.review.batch;
+    const items = keys.map((k) => state.byKey.get(k)).filter(Boolean);
+
+    const wrap = el(
+      "section",
+      { class: "reviewView" },
+      el(
+        "div",
+        { class: "toolbar" },
+        el("button", { class: "iconBtn", onclick: () => navigate("#/dashboard") }, "←"),
+        el("h2", null, "Removal Queue — Batch")
+      ),
+      el("div", { class: "progress" }, `${completedCount} / ${allRemove.length} removals completed`),
+      el(
+        "p",
+        { class: "muted" },
+        `${items.length} tabs opened. Remove each one in Snapchat, then check it off below.`
+      )
+    );
+
+    const list = el("div", { class: "batchList" });
+    for (const acc of items) {
+      const done = !!acc.removalCompleted;
+      const row = el(
+        "label",
+        { class: `batchRow${done ? " done" : ""}` },
+        el("input", {
+          type: "checkbox",
+          checked: done ? "checked" : null,
+          onchange: async (e) => {
+            if (e.target.checked) {
+              await DB.pushUndo({
+                type: "removal",
+                usernameKey: acc.usernameKey,
+                prevRemovalCompleted: !!acc.removalCompleted,
+                prevRemovalCompletedAt: acc.removalCompletedAt || null,
+              });
+              state.undoCount++;
+              await persistDecision(acc, { removalCompleted: true, removalCompletedAt: Date.now() });
+            } else {
+              await persistDecision(acc, { removalCompleted: false, removalCompletedAt: null });
+            }
+            render();
+          },
+        }),
+        el(
+          "div",
+          { class: "batchRowInfo" },
+          el("div", { class: "batchRowName" }, acc.displayName || acc.username),
+          el("div", { class: "batchRowUser" }, "@" + acc.username)
+        ),
+        el(
+          "a",
+          {
+            class: "batchRowReopen",
+            href: snapchatUrl(acc.username),
+            target: "_blank",
+            rel: "noopener",
+            onclick: (e) => e.stopPropagation(),
+          },
+          "Reopen"
+        )
+      );
+      list.appendChild(row);
+    }
+    wrap.appendChild(list);
+
+    wrap.appendChild(
+      el(
+        "div",
+        { class: "menuList" },
+        el(
+          "button",
+          {
+            onclick: () => {
+              state.review.batch = null;
+              render();
+            },
+          },
+          "Done with this batch"
+        )
+      )
+    );
 
     return wrap;
   }
@@ -895,6 +1083,19 @@
 
     const menu = el("div", { class: "menuList" });
     menu.appendChild(el("label", { class: "primary fileBtn" }, "Update Snapchat Data", fileInput()));
+    menu.appendChild(
+      el(
+        "button",
+        {
+          onclick: async () => {
+            state.settings.autoShowProfilePreview = !state.settings.autoShowProfilePreview;
+            await DB.setMeta("autoShowProfilePreview", state.settings.autoShowProfilePreview);
+            render();
+          },
+        },
+        `Auto-show Bitmoji / Public Profile previews: ${state.settings.autoShowProfilePreview ? "On" : "Off"}`
+      )
+    );
     menu.appendChild(el("button", { onclick: exportDecisionsCsv }, "Export Decisions CSV"));
     menu.appendChild(el("button", { onclick: exportBackupJson }, "Export SnapClean Backup"));
     menu.appendChild(el("label", { class: "fileBtn" }, "Restore SnapClean Backup", restoreInput()));
@@ -916,6 +1117,11 @@
     wrap.appendChild(menu);
 
     if (state.lastImport) {
+      const counts = state.lastImport.counts || {};
+      const byFlag = counts.byFlag || {};
+      const sections = state.lastImport.sections || [];
+      const warnings = state.lastImport.warnings || [];
+
       wrap.appendChild(
         el(
           "div",
@@ -923,7 +1129,52 @@
           el("h3", null, "Last import"),
           el("p", null, `${esc(state.lastImport.fileName || "Snapchat export")}`),
           el("p", { class: "muted" }, new Date(state.lastImport.timestamp).toLocaleString()),
-          el("p", { class: "muted" }, `${state.lastImport.counts?.total ?? state.accounts.length} accounts`)
+          el("p", { class: "muted" }, `${counts.total ?? state.accounts.length} accounts`),
+          el(
+            "details",
+            { class: "diagnostics" },
+            el("summary", null, "Import diagnostics"),
+            el(
+              "p",
+              { class: "muted" },
+              "What SnapClean actually found in your export. If a category below looks wrong (e.g. 0 Current Friends when you have friends), the section heading in your export likely wasn't recognized — this is the same data used to label every account, so it doubles as a way to check the labels are right."
+            ),
+            el(
+              "dl",
+              { class: "flagCounts" },
+              ...Object.entries(byFlag).map(([flag, n]) =>
+                el("div", null, el("dt", null, flag.replace(/_/g, " ")), el("dd", null, String(n)))
+              )
+            ),
+            sections.length
+              ? el(
+                  "table",
+                  { class: "sectionTable" },
+                  el("thead", null, el("tr", null, el("th", null, "Section heading found"), el("th", null, "Matched as"), el("th", null, "Rows"))),
+                  el(
+                    "tbody",
+                    null,
+                    ...sections.map((s) =>
+                      el(
+                        "tr",
+                        null,
+                        el("td", null, esc(s.heading)),
+                        el("td", null, s.flag ? s.flag.replace(/_/g, " ") : "— not recognized —"),
+                        el("td", null, String(s.rows))
+                      )
+                    )
+                  )
+                )
+              : el("p", { class: "muted" }, "No section-level diagnostics were recorded for this import."),
+            warnings.length
+              ? el(
+                  "div",
+                  { class: "warningList" },
+                  el("p", { class: "muted" }, "Warnings from this import:"),
+                  el("ul", null, ...warnings.map((w) => el("li", null, w)))
+                )
+              : null
+          )
         )
       );
     }
@@ -1147,6 +1398,7 @@
         timestamp: now,
         counts: result.counts,
         warnings: result.warnings,
+        sections: result.sections,
       };
       await DB.setMeta("lastImport", importMeta);
 

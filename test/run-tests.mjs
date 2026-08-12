@@ -160,6 +160,27 @@ async function main() {
     );
   }
 
+  // --- regression test: count-suffixed section headings (e.g. real Snapchat
+  // exports rendering "Friends (4,528)") must still be recognized. This was
+  // a real bug — an overly strict, anchored regex silently dropped the
+  // entire Friends section, causing real current friends to fall through to
+  // whatever other section happened to also list them (or to show up
+  // unrecognized). ------------------------------------------------------
+  const currentFriendCount = result.accounts.filter((a) => Engine.hasFlag(a, "CURRENT_FRIEND")).length;
+  assert(
+    currentFriendCount >= 9,
+    `"Friends (9)" heading (count suffix) should still be recognized as CURRENT_FRIEND for all 9 listed accounts, got ${currentFriendCount}`
+  );
+  assertEqual(Engine.deriveRelationshipState(alice), "Current Friend", "alice must show as Current Friend, not Pending, despite the count-suffixed heading");
+
+  // --- import diagnostics: every recognized section should be reported ------
+  assert(Array.isArray(result.sections) && result.sections.length > 0, "parseSnapchatZip should return per-section diagnostics");
+  const friendsSection = result.sections.find((s) => s.flag === "CURRENT_FRIEND");
+  assert(!!friendsSection, "diagnostics should include a CURRENT_FRIEND section entry");
+  assertEqual(friendsSection && friendsSection.rows, 9, "CURRENT_FRIEND section should report 9 parsed rows");
+  assertEqual(result.counts.byFlag.CURRENT_FRIEND, 9, "counts.byFlag.CURRENT_FRIEND should be 9");
+  assertEqual(result.counts.byFlag.PENDING_REQUEST, 1, "counts.byFlag.PENDING_REQUEST should be 1 (only dave_pending)");
+
   // --- import counts ----------------------------------------------------
   assertEqual(result.counts.total, result.accounts.length, "counts.total should equal accounts.length");
   assert(result.counts.chatMatched >= 7, "chat index should have matched at least 7 subpages");
