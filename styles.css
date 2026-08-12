@@ -313,30 +313,6 @@ button, select, input {
 }
 .snapBtn.wide { flex: 1; }
 
-.profilePreviewBlock { margin-top: 4px; }
-.profileToggle {
-  background: transparent;
-  border: 1px dashed var(--border);
-  color: var(--muted);
-  border-radius: var(--radius-md);
-  padding: 10px;
-  width: 100%;
-  font-size: 0.85rem;
-  font-weight: 600;
-}
-.profilePreview { margin-top: 10px; display: flex; justify-content: center; }
-.profilePreview.hidden { display: none; }
-.profilePreview .snapchat-embed { width: 100%; max-width: 380px; min-height: 60px; }
-.profilePreview .snapchat-embed a {
-  display: block;
-  text-align: center;
-  padding: 12px;
-  color: var(--snap-yellow);
-  text-decoration: none;
-  font-size: 0.85rem;
-}
-.embedNote, .embedFallback { color: var(--muted); font-size: 0.72rem; text-align: center; margin-top: 6px; }
-
 .swipeIndicator {
   position: absolute;
   top: 24px;

@@ -163,36 +163,19 @@ async function main() {
     assert(!!removedBtn, "a REMOVED confirm control is present (either the combined action or the welcome-back banner)");
   }
 
-  // --- Bitmoji / Public Profile preview: now auto-shown by default -------
+  // --- The Bitmoji/Public Profile embed feature was removed: Snapchat's
+  // Public Profile embed widget only works for creator/subscribe accounts,
+  // not an ordinary friend's regular add-friend page, so it produced
+  // "Oops something went wrong" for real friends. Regression guard: it
+  // should not reappear anywhere in the UI.
   window.location.hash = "#/review/priority_cleanup/highest_priority";
   await new Promise((r) => setTimeout(r, 50));
-  const profileToggle = view.querySelector(".profileToggle");
-  assert(!!profileToggle, "Bitmoji/Public Profile toggle renders on the review card");
-  const autoContainer = view.querySelector(".profilePreview");
-  assert(!!autoContainer && !autoContainer.classList.contains("hidden"), "profile preview is auto-expanded by default (no tap needed)");
-  assert(!!autoContainer.querySelector(".snapchat-embed"), "official Snapchat embed blockquote is auto-injected");
-  assert(!!window.document.querySelector('script[data-snap-embed-loader]'), "Snapchat's embed.js loader script is injected to trigger rendering");
-  assert(/Hide Preview/.test(profileToggle.textContent), "toggle reads 'Hide Preview' when auto-shown");
-
-  // Toggling it off should collapse the container.
-  profileToggle.click();
-  await new Promise((r) => setTimeout(r, 20));
-  assert(autoContainer.classList.contains("hidden"), "tapping the toggle hides the preview");
-
-  // --- Settings: auto-show preference toggle ------------------------------
+  assert(!view.querySelector(".profileToggle"), "the removed Bitmoji/Public Profile embed toggle does not reappear on review cards");
+  assert(!view.querySelector(".snapchat-embed"), "no Snapchat embed blockquote is ever injected");
+  assert(!window.document.querySelector("script[data-snap-embed-loader]"), "the Snapchat embed.js loader script is never injected");
   window.location.hash = "#/settings";
   await new Promise((r) => setTimeout(r, 50));
-  const autoShowSettingBtn = [...view.querySelectorAll("button")].find((b) => /Auto-show Bitmoji/.test(b.textContent));
-  assert(!!autoShowSettingBtn, "Settings has an auto-show profile preview toggle");
-  assert(/On/.test(autoShowSettingBtn.textContent), "auto-show defaults to On");
-  autoShowSettingBtn.click();
-  await new Promise((r) => setTimeout(r, 50));
-  const autoShowSettingBtnAfter = [...view.querySelectorAll("button")].find((b) => /Auto-show Bitmoji/.test(b.textContent));
-  assert(!!autoShowSettingBtnAfter && /Off/.test(autoShowSettingBtnAfter.textContent), "toggling the setting flips it to Off");
-  window.location.hash = "#/review/priority_cleanup/highest_priority";
-  await new Promise((r) => setTimeout(r, 50));
-  const containerAfterOff = view.querySelector(".profilePreview");
-  assert(!!containerAfterOff && containerAfterOff.classList.contains("hidden"), "with auto-show Off, new cards render collapsed by default");
+  assert(!/Auto-show Bitmoji/.test(view.textContent), "Settings no longer offers the removed auto-show profile preview toggle");
 
   // --- keyboard shortcuts -------------------------------------------------
   window.location.hash = "#/review/priority_cleanup/highest_priority";

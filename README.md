@@ -94,13 +94,12 @@ Snapchat My Data ZIP
    - Keyboard shortcuts on a computer: **O** opens the profile, **Enter**/
      **R** marks removed, **S** skips. In review: **←** Remove, **→**
      Keep, **↑** Later, **Z** Undo.
-   - Tap **Show Bitmoji / Public Profile** on any card to preview them
-     right inside SnapClean (via Snapchat's own official [public-profile
-     web embed](https://developers.snap.com/api/snapchat-for-web/social-plugins/embedding-web-content) —
-     not scraping, just Snapchat's sanctioned widget) if you don't
-     remember who someone is. This is on by default (Settings lets you
-     switch it back to tap-to-reveal per card if you'd rather not have
-     every card contact snapchat.com automatically).
+   - If you don't remember who someone is, tap **View in Snapchat** — that
+     opens their real profile. (An earlier version tried to preview
+     Bitmojis inline using Snapchat's Public Profile embed widget; that
+     widget is actually for creator/subscribe accounts, not an ordinary
+     friend's regular profile, so it failed for real friends. It's been
+     removed rather than left half-working — see below.)
 7. Got a newer Snapchat export later? **Settings → Update Snapchat Data.**
    Your existing Keep/Remove/Later decisions and removal-completed status
    are preserved; only the relationship/activity metadata is refreshed.
@@ -237,6 +236,22 @@ This app is fully static — no backend, no build step.
 - Not a Snapchat client. It doesn't show your live feed, stories, or chats.
 - Not a bot. It cannot and will not remove friends for you.
 - Not a data-broker tool. Your export never leaves this device.
+
+## A feature that was removed: inline Bitmoji preview
+
+An earlier version tried to preview each account's Bitmoji directly on the
+card using Snapchat's officially documented [Public Profile web embed
+widget](https://developers.snap.com/api/snapchat-for-web/social-plugins/embedding-web-content).
+That was a mistake in how the feature was applied, not just a wrong URL:
+Snap's Public Profile embeds are built for **creator/subscribe accounts**
+(brands and creators who've opted into Snapchat's Public Profile feature,
+with a Subscribe button) — not for an ordinary friend's regular add-friend
+page. Most real friends aren't public-profile creator accounts, so there
+was nothing valid for the widget to embed, and it surfaced Snapchat's own
+"Oops something went wrong" error instead of a preview. It's been removed
+outright rather than left half-working. **View in Snapchat** (which opens
+the real profile — reliable, since it's a normal link, not an embed) is
+the way to check who someone is.
 
 ## Why SnapClean won't automate the removal itself
 

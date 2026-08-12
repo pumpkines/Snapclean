@@ -39,7 +39,6 @@
     search: { term: "", limit: 150 },
     undoCount: 0,
     pendingRemoval: null,
-    settings: { autoShowProfilePreview: true },
     lastImport: null,
     pendingReturnTo: "#/dashboard",
   };
@@ -59,7 +58,6 @@
     recomputeAll();
     state.undoCount = await DB.peekUndoCount();
     state.lastImport = await DB.getMeta("lastImport", null);
-    state.settings.autoShowProfilePreview = await DB.getMeta("autoShowProfilePreview", true);
     const savedReview = await DB.getMeta("reviewState", null);
     if (savedReview) state.review = Object.assign(state.review, savedReview, { skipSet: new Set() });
     state.ready = true;
@@ -238,79 +236,6 @@
   }
   const CAN_REMOVE_FROM_THIS_DEVICE = isLikelyIOS();
 
-  // ---- Bitmoji / Public Profile preview --------------------------------
-  // Uses Snapchat's own, officially documented Web Embeds feature (public
-  // profiles are one of the four embeddable content types Snap supports —
-  // see developers.snap.com/api/snapchat-for-web/social-plugins). This is a
-  // sanctioned public API, not scraping: it loads Snapchat's own widget
-  // script, which then renders an iframe Snapchat controls. No login, no
-  // private endpoints. It's opt-in per card (tap to expand) rather than
-  // automatic, since expanding it does make a request to snapchat.com for
-  // that specific person.
-
-  function triggerSnapEmbedScan() {
-    // These widget loaders scan the whole document for un-rendered
-    // `.snapchat-embed` blockquotes each time they execute. Re-inserting a
-    // fresh <script> is the standard, safe way to ask it to re-scan after
-    // SnapClean has added a new embed to the page (already-rendered embeds
-    // are left alone).
-    document.querySelectorAll("script[data-snap-embed-loader]").forEach((s) => s.remove());
-    const s = document.createElement("script");
-    s.src = "https://www.snapchat.com/embed.js";
-    s.async = true;
-    s.setAttribute("data-snap-embed-loader", "1");
-    document.body.appendChild(s);
-  }
-
-  function buildProfilePreview(username) {
-    const url = snapchatUrl(username);
-    const autoShow = state.settings.autoShowProfilePreview;
-    const toggleBtn = el("button", { class: "profileToggle" }, autoShow ? "Hide Preview" : "Show Bitmoji / Public Profile");
-    const container = el("div", { class: autoShow ? "profilePreview" : "profilePreview hidden" });
-
-    function loadEmbed() {
-      if (container.dataset.loaded) return;
-      container.dataset.loaded = "1";
-      container.appendChild(
-        el(
-          "blockquote",
-          {
-            class: "snapchat-embed",
-            "data-snapchat-embed-url": `${url}/embed`,
-          },
-          el("a", { href: url, target: "_blank", rel: "noopener" }, "View profile on Snapchat")
-        )
-      );
-      container.appendChild(
-        el("p", { class: "embedNote" }, "Snapchat's official public-profile embed — this contacts snapchat.com.")
-      );
-      triggerSnapEmbedScan();
-      setTimeout(() => {
-        if (container.isConnected && !container.querySelector("iframe")) {
-          container.appendChild(
-            el("p", { class: "muted embedFallback" }, "Preview didn't load for this account — use View in Snapchat instead.")
-          );
-        }
-      }, 4000);
-    }
-
-    toggleBtn.addEventListener("click", () => {
-      const hidden = container.classList.contains("hidden");
-      if (hidden) {
-        container.classList.remove("hidden");
-        toggleBtn.textContent = "Hide Preview";
-        loadEmbed();
-      } else {
-        container.classList.add("hidden");
-        toggleBtn.textContent = "Show Bitmoji / Public Profile";
-      }
-    });
-
-    if (autoShow) loadEmbed();
-
-    return el("div", { class: "profilePreviewBlock" }, toggleBtn, container);
-  }
-
   function reasonsHtml(reasons) {
     if (!reasons || !reasons.length) return "";
     return el(
@@ -365,8 +290,7 @@
         "a",
         { class: "snapBtn", href: snapchatUrl(account.username), target: "_blank", rel: "noopener" },
         "VIEW IN SNAPCHAT"
-      ),
-      buildProfilePreview(account.username)
+      )
     );
     return card;
   }
@@ -1132,19 +1056,6 @@
 
     const menu = el("div", { class: "menuList" });
     menu.appendChild(el("label", { class: "primary fileBtn" }, "Update Snapchat Data", fileInput()));
-    menu.appendChild(
-      el(
-        "button",
-        {
-          onclick: async () => {
-            state.settings.autoShowProfilePreview = !state.settings.autoShowProfilePreview;
-            await DB.setMeta("autoShowProfilePreview", state.settings.autoShowProfilePreview);
-            render();
-          },
-        },
-        `Auto-show Bitmoji / Public Profile previews: ${state.settings.autoShowProfilePreview ? "On" : "Off"}`
-      )
-    );
     menu.appendChild(el("button", { onclick: exportDecisionsCsv }, "Export Decisions CSV"));
     menu.appendChild(el("button", { onclick: exportBackupJson }, "Export SnapClean Backup"));
     menu.appendChild(el("label", { class: "fileBtn" }, "Restore SnapClean Backup", restoreInput()));
