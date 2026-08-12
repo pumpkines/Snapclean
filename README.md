@@ -208,7 +208,7 @@ npm install   # pulls in fflate/jsdom/fake-indexeddb as dev dependencies for the
 npm test      # pure logic + parser unit tests (test/run-tests.mjs)
 npm run smoke # full end-to-end smoke test: boots the real app in jsdom, imports
               # the fixture ZIP, and clicks through dashboard/review/removal
-              # (including the fast-path controls)/search/the profile-preview toggle
+              # (including the fast-path controls)/search/settings
 ```
 
 `test/build-fixtures.mjs` generates a small synthetic "My Data" export
@@ -221,6 +221,41 @@ username appearing in two relationship categories at once.
 `test/run-tests.mjs` asserts relationship-state derivation, priority
 scoring/ordering, every filter, sorting, and the typed error thrown when
 `friends.html` is missing.
+
+## Troubleshooting
+
+**"I pushed/pulled a fix but the app still behaves like the old version."**
+An installed PWA can keep running cached JavaScript from before an update
+for a little while — Settings → **Force update SnapClean** unregisters
+the service worker and clears its cache, then reloads (your imported data
+and decisions are untouched; they live in IndexedDB, which this doesn't
+touch). If that doesn't help, remove the Home Screen icon entirely and
+re-add it from Safari to guarantee a clean install.
+
+**"Clicking a profile shows Snapchat's own 'Oops, something went wrong'
+error, or profiles stop opening properly after a while."** This is
+Snapchat's own error, not SnapClean's — and it's a real, structural risk
+of this app's whole premise: Snapchat applies rate limits and temporary
+restrictions to accounts that add friends, send requests, or otherwise
+repeat an action at high velocity in a short window (this is documented
+behavior for friend requests specifically, and community reports describe
+the same generic error after what looks like account-level throttling).
+Looking up many different people's profiles in quick succession is
+structurally similar to the patterns those systems watch for, even though
+every tap here is a genuine manual action. SnapClean can't detect or work
+around Snapchat's own rate limiting — trying to would mean guessing at and
+circumventing another platform's anti-abuse system, which isn't something
+this project will do (see "Why SnapClean won't automate the removal
+itself," below). If you're hitting this:
+- Slow down — avoid tapping into Snapchat for every single card back to
+  back. The app is designed with a "fast path" in mind: many decisions
+  (an old sent request with no reply, a friend inactive for two years)
+  are answerable from the card's own data without opening Snapchat at
+  all; save **View in Snapchat** for the accounts you genuinely don't
+  recognize.
+- Spread a big cleanup across multiple sessions rather than one long run.
+- If it happens, just wait — these Snapchat-side restrictions are
+  typically temporary.
 
 ## Deployment (GitHub Pages)
 

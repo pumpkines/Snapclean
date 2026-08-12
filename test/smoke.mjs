@@ -266,6 +266,8 @@ async function main() {
   window.location.hash = "#/settings";
   await new Promise((r) => setTimeout(r, 50));
   assert(/Export Decisions CSV/.test(view.textContent), "settings view renders export controls");
+  const forceUpdateBtn = [...view.querySelectorAll("button")].find((b) => /Force update SnapClean/.test(b.textContent));
+  assert(!!forceUpdateBtn, "Settings offers a 'Force update SnapClean' control to clear stale cached app code");
 
   console.log(`\n${failures === 0 ? "SMOKE TEST PASSED" : "SMOKE TEST FAILED"} (${failures} failure(s))`);
   if (failures > 0) process.exit(1);

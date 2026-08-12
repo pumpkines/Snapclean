@@ -2,8 +2,19 @@
 // working offline once installed. This worker only ever caches SnapClean's
 // own static files; it never sees or stores any Snapchat-derived data (that
 // lives exclusively in IndexedDB, which service workers cannot read).
+//
+// Strategy: NETWORK-FIRST for the app's own code (HTML/CSS/JS), falling back
+// to cache only when offline. An earlier version used cache-first (serve
+// cached instantly, update cache in the background for *next* time), which
+// meant a real code fix could sit deployed on GitHub Pages while an already-
+// installed copy of the app kept running the old cached JavaScript — visible
+// as "I pushed a fix but it still doesn't work." Network-first trades a
+// little bit of raw launch speed for actually picking up new code the next
+// time the app has a connection, which matters far more for an app that's
+// still being actively fixed. Bump CACHE_VERSION whenever PRECACHE_URLS
+// changes so old cache entries get swept on activate.
 
-const CACHE_VERSION = "snapclean-v1";
+const CACHE_VERSION = "snapclean-v2";
 const PRECACHE_URLS = [
   "./",
   "./index.html",
@@ -46,17 +57,14 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== location.origin) return;
 
   event.respondWith(
-    caches.match(req).then((cached) => {
-      const network = fetch(req)
-        .then((res) => {
-          if (res && res.ok) {
-            const copy = res.clone();
-            caches.open(CACHE_VERSION).then((cache) => cache.put(req, copy));
-          }
-          return res;
-        })
-        .catch(() => cached);
-      return cached || network;
-    })
+    fetch(req)
+      .then((res) => {
+        if (res && res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE_VERSION).then((cache) => cache.put(req, copy));
+        }
+        return res;
+      })
+      .catch(() => caches.match(req))
   );
 });
