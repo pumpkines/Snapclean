@@ -37,9 +37,10 @@ async function main() {
   window.indexedDB = globalThis.indexedDB;
   window.IDBKeyRange = globalThis.IDBKeyRange;
 
-  // jsdom doesn't implement Pointer Capture or scrollTo; stub them.
+  // jsdom doesn't implement Pointer Capture, scrollTo, or window.open; stub them.
   window.HTMLElement.prototype.setPointerCapture = () => {};
   window.HTMLElement.prototype.scrollTo = () => {};
+  window.open = () => ({ closed: false });
 
   const loadScript = (path) => {
     const code = readFileSync(`${root}/${path}`, "utf8");
@@ -113,6 +114,52 @@ async function main() {
   window.location.hash = "#/removal";
   await new Promise((r) => setTimeout(r, 50));
   assert(/Removal Queue/.test(view.textContent), "removal queue view renders");
+
+  // First move at least one account into the Remove decision so the queue is
+  // non-empty, then verify the streamlined removal controls render.
+  window.location.hash = "#/browse";
+  await new Promise((r) => setTimeout(r, 50));
+  window.location.hash = "#/review/priority_cleanup/highest_priority";
+  await new Promise((r) => setTimeout(r, 50));
+  const removeBtn = [...view.querySelectorAll(".actions button")].find((b) => /REMOVE/.test(b.textContent));
+  if (removeBtn) {
+    removeBtn.click();
+    await new Promise((r) => setTimeout(r, 250));
+  }
+
+  window.location.hash = "#/removal";
+  await new Promise((r) => setTimeout(r, 50));
+  if (/OPEN IN SNAPCHAT/.test(view.textContent)) {
+    const openLink = view.querySelector(".snapBtn.wide");
+    assert(!!openLink, "Removal Queue 'Open in Snapchat' link renders");
+    openLink.dispatchEvent(new window.Event("click"));
+
+    // Simulate returning to the tab after >700ms and re-rendering (the app
+    // listens for visibilitychange; jsdom reports visibilityState via a
+    // getter we can't easily flip, so re-invoke render() directly here to
+    // confirm the "welcome back" fast-path logic itself doesn't throw).
+    await new Promise((r) => setTimeout(r, 800));
+    window.dispatchEvent(new window.Event("hashchange"));
+    await new Promise((r) => setTimeout(r, 50));
+    assert(!/undefined/.test(view.textContent), "removal queue re-renders cleanly after Open in Snapchat");
+
+    const removedBtn = [...view.querySelectorAll("button")].find((b) => /REMOVED/.test(b.textContent));
+    assert(!!removedBtn, "a REMOVED confirm control is present (either the combined action or the welcome-back banner)");
+  }
+
+  // --- Bitmoji / Public Profile preview toggle ------------------------------
+  window.location.hash = "#/review/priority_cleanup/highest_priority";
+  await new Promise((r) => setTimeout(r, 50));
+  const profileToggle = view.querySelector(".profileToggle");
+  assert(!!profileToggle, "Bitmoji/Public Profile toggle renders on the review card");
+  if (profileToggle) {
+    profileToggle.click();
+    await new Promise((r) => setTimeout(r, 20));
+    const container = view.querySelector(".profilePreview");
+    assert(!!container && !container.classList.contains("hidden"), "profile preview expands on tap");
+    assert(!!container.querySelector(".snapchat-embed"), "official Snapchat embed blockquote is injected");
+    assert(!!window.document.querySelector('script[data-snap-embed-loader]'), "Snapchat's embed.js loader script is injected to trigger rendering");
+  }
 
   // --- Search view ----------------------------------------------------
   window.location.hash = "#/search";

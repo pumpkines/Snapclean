@@ -38,6 +38,7 @@
     review: { filterId: "priority_cleanup", sortId: "highest_priority", cursorKey: null, skipSet: new Set() },
     search: { term: "", limit: 150 },
     undoCount: 0,
+    pendingRemoval: null,
     lastImport: null,
     pendingReturnTo: "#/dashboard",
   };
@@ -115,6 +116,8 @@
       return;
     }
 
+    if (top !== "removal") state.pendingRemoval = null;
+
     switch (top) {
       case "dashboard":
         setContent(renderDashboard());
@@ -181,6 +184,73 @@
     return `https://www.snapchat.com/add/${encodeURIComponent(username)}`;
   }
 
+  // ---- Bitmoji / Public Profile preview --------------------------------
+  // Uses Snapchat's own, officially documented Web Embeds feature (public
+  // profiles are one of the four embeddable content types Snap supports —
+  // see developers.snap.com/api/snapchat-for-web/social-plugins). This is a
+  // sanctioned public API, not scraping: it loads Snapchat's own widget
+  // script, which then renders an iframe Snapchat controls. No login, no
+  // private endpoints. It's opt-in per card (tap to expand) rather than
+  // automatic, since expanding it does make a request to snapchat.com for
+  // that specific person.
+
+  function triggerSnapEmbedScan() {
+    // These widget loaders scan the whole document for un-rendered
+    // `.snapchat-embed` blockquotes each time they execute. Re-inserting a
+    // fresh <script> is the standard, safe way to ask it to re-scan after
+    // SnapClean has added a new embed to the page (already-rendered embeds
+    // are left alone).
+    document.querySelectorAll("script[data-snap-embed-loader]").forEach((s) => s.remove());
+    const s = document.createElement("script");
+    s.src = "https://www.snapchat.com/embed.js";
+    s.async = true;
+    s.setAttribute("data-snap-embed-loader", "1");
+    document.body.appendChild(s);
+  }
+
+  function buildProfilePreview(username) {
+    const url = snapchatUrl(username);
+    const toggleBtn = el("button", { class: "profileToggle" }, "Show Bitmoji / Public Profile");
+    const container = el("div", { class: "profilePreview hidden" });
+
+    toggleBtn.addEventListener("click", () => {
+      const hidden = container.classList.contains("hidden");
+      if (hidden) {
+        container.classList.remove("hidden");
+        toggleBtn.textContent = "Hide Preview";
+        if (!container.dataset.loaded) {
+          container.dataset.loaded = "1";
+          container.appendChild(
+            el(
+              "blockquote",
+              {
+                class: "snapchat-embed",
+                "data-snapchat-embed-url": `${url}/embed`,
+              },
+              el("a", { href: url, target: "_blank", rel: "noopener" }, "View profile on Snapchat")
+            )
+          );
+          container.appendChild(
+            el("p", { class: "embedNote" }, "Loads Snapchat's official public-profile embed — this contacts snapchat.com.")
+          );
+          triggerSnapEmbedScan();
+          setTimeout(() => {
+            if (container.isConnected && !container.querySelector("iframe")) {
+              container.appendChild(
+                el("p", { class: "muted embedFallback" }, "Preview didn't load for this account — use View in Snapchat instead.")
+              );
+            }
+          }, 4000);
+        }
+      } else {
+        container.classList.add("hidden");
+        toggleBtn.textContent = "Show Bitmoji / Public Profile";
+      }
+    });
+
+    return el("div", { class: "profilePreviewBlock" }, toggleBtn, container);
+  }
+
   function reasonsHtml(reasons) {
     if (!reasons || !reasons.length) return "";
     return el(
@@ -235,16 +305,18 @@
         "a",
         { class: "snapBtn", href: snapchatUrl(account.username), target: "_blank", rel: "noopener" },
         "VIEW IN SNAPCHAT"
-      )
+      ),
+      buildProfilePreview(account.username)
     );
     return card;
   }
 
   // ---- swipe gesture handling ------------------------------------------------
 
-  function attachSwipe(cardWrap, { onKeep, onRemove, onLater }) {
+  function attachSwipe(cardWrap, { onKeep, onRemove, onLater, labels }) {
     let card = cardWrap.querySelector("#reviewCard");
     if (!card) return;
+    const L = Object.assign({ keep: "KEEP", remove: "REMOVE", later: "LATER" }, labels);
     let startX = 0,
       startY = 0,
       dx = 0,
@@ -260,11 +332,11 @@
       card.style.transform = `translate(${dx}px, ${dy}px) rotate(${rot}deg)`;
       const absX = Math.abs(dx);
       if (absX > 20 && absX > Math.abs(dy)) {
-        indicator.textContent = dx > 0 ? "KEEP" : "REMOVE";
+        indicator.textContent = dx > 0 ? L.keep : L.remove;
         indicator.className = `swipeIndicator show ${dx > 0 ? "keep" : "remove"}`;
         indicator.style.opacity = Math.min(1, absX / threshold);
-      } else if (dy < -20) {
-        indicator.textContent = "LATER";
+      } else if (dy < -20 && onLater) {
+        indicator.textContent = L.later;
         indicator.className = "swipeIndicator show later";
         indicator.style.opacity = Math.min(1, Math.abs(dy) / threshold);
       } else {
@@ -317,7 +389,7 @@
       const absY = Math.abs(dy);
       if (absX > threshold && absX > absY) {
         commit(dx > 0 ? "keep" : "remove");
-      } else if (dy < -threshold && absY > absX) {
+      } else if (onLater && dy < -threshold && absY > absX) {
         commit("later");
       } else {
         reset();
@@ -461,7 +533,6 @@
   // ---- Removal Queue ----------------------------------------------------
 
   function renderRemovalQueue() {
-    const now = Date.now();
     const allRemove = state.accounts.filter((a) => a.decision === "REMOVE");
     const remaining = allRemove.filter((a) => !a.removalCompleted && !state.review.skipSet.has(a.usernameKey));
     const completedCount = allRemove.filter((a) => a.removalCompleted).length;
@@ -495,10 +566,7 @@
       return wrap;
     }
 
-    const cardWrap = el("div", { class: "cardWrap" }, buildCard(account));
-    wrap.appendChild(cardWrap);
-
-    const markRemoved = async () => {
+    const markRemoved = async (opts = {}) => {
       await DB.pushUndo({
         type: "removal",
         usernameKey: account.usernameKey,
@@ -507,12 +575,67 @@
       });
       state.undoCount++;
       await persistDecision(account, { removalCompleted: true, removalCompletedAt: Date.now() });
-      render();
+      if (state.pendingRemoval?.usernameKey === account.usernameKey) state.pendingRemoval = null;
+      if (!opts.silent) render();
     };
     const skip = () => {
       state.review.skipSet.add(account.usernameKey);
+      if (state.pendingRemoval?.usernameKey === account.usernameKey) state.pendingRemoval = null;
       render();
     };
+    const openInSnapchat = () => {
+      state.pendingRemoval = { usernameKey: account.usernameKey, openedAt: Date.now() };
+    };
+    // One tap: mark this one removed AND immediately open the next person's
+    // profile, so a fast reviewer can just alternate "remove in Snapchat" /
+    // "tap this button" without hunting for the Open button each time.
+    // window.open must fire synchronously (before any await) or Safari's
+    // popup blocker will swallow it, since it needs an active user gesture.
+    const removedAndNext = () => {
+      const next = remaining[1];
+      if (next) window.open(snapchatUrl(next.username), "_blank", "noopener");
+      markRemoved();
+    };
+
+    // --- "Welcome back" fast path -------------------------------------
+    // If the person just switched to Snapchat from this exact card and has
+    // now returned, skip straight to a big confirm instead of making them
+    // find the button again.
+    const backAlready =
+      state.pendingRemoval &&
+      state.pendingRemoval.usernameKey === account.usernameKey &&
+      Date.now() - state.pendingRemoval.openedAt > 700 &&
+      document.visibilityState === "visible";
+
+    const cardWrap = el("div", { class: "cardWrap" }, buildCard(account));
+    wrap.appendChild(cardWrap);
+
+    if (backAlready) {
+      wrap.appendChild(
+        el(
+          "div",
+          { class: "welcomeBackBanner" },
+          el("p", null, `Back already? Mark @${esc(account.username)} removed?`),
+          el(
+            "div",
+            { class: "actions-3" },
+            el("button", { class: "keep wide", onclick: () => markRemoved() }, "YES, REMOVED ✓"),
+            el(
+              "button",
+              { class: "textBtn", onclick: () => (state.pendingRemoval = null) || render() },
+              "Not yet"
+            )
+          )
+        )
+      );
+    }
+
+    attachSwipe(cardWrap, {
+      onKeep: () => markRemoved(),
+      onRemove: skip,
+      onLater: null,
+      labels: { keep: "REMOVED", remove: "SKIP" },
+    });
 
     wrap.appendChild(
       el(
@@ -520,15 +643,17 @@
         { class: "actions actions-3" },
         el(
           "a",
-          { class: "snapBtn wide", href: snapchatUrl(account.username), target: "_blank", rel: "noopener" },
+          { class: "snapBtn wide", href: snapchatUrl(account.username), target: "_blank", rel: "noopener", onclick: openInSnapchat },
           "OPEN IN SNAPCHAT"
         ),
-        el("button", { class: "keep wide", onclick: markRemoved }, "REMOVED ✓"),
+        remaining.length > 1
+          ? el("button", { class: "keep wide", onclick: removedAndNext }, "REMOVED ✓ — OPEN NEXT")
+          : el("button", { class: "keep wide", onclick: () => markRemoved() }, "REMOVED ✓"),
         el("button", { class: "textBtn", onclick: skip }, "SKIP")
       )
     );
+    wrap.appendChild(el("p", { class: "hint" }, "Swipe right once you've removed them in Snapchat, or left to skip for now."));
 
-    void now;
     return wrap;
   }
 

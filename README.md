@@ -62,6 +62,23 @@ Snapchat My Data ZIP
 6. When you're ready to actually clean up: open **Removal Queue** from the
    dashboard. For each entry, tap **Open in Snapchat**, remove them there,
    then tap **Removed ✓** back in SnapClean.
+
+   A few things make this loop faster for a big list:
+   - **Swipe right** on the card once you've removed them, or **swipe
+     left** to skip for now — same gesture as review.
+   - Tapping **Open in Snapchat** and then switching back to SnapClean
+     shows a **"Back already? Mark removed?"** confirm automatically, so
+     you don't have to hunt for the button.
+   - **REMOVED ✓ — OPEN NEXT** marks the current account done and opens
+     the *next* person's Snapchat profile in one tap, so you can
+     alternate "remove in Snapchat" / "tap this button" without stopping.
+   - Tap **Show Bitmoji / Public Profile** on any card to preview them
+     right inside SnapClean (via Snapchat's own official [public-profile
+     web embed](https://developers.snap.com/api/snapchat-for-web/social-plugins/embedding-web-content) —
+     not scraping, just Snapchat's sanctioned widget) if you don't
+     remember who someone is without leaving the app. This does make a
+     request to snapchat.com for that person, so it's opt-in per card
+     rather than automatic.
 7. Got a newer Snapchat export later? **Settings → Update Snapchat Data.**
    Your existing Keep/Remove/Later decisions and removal-completed status
    are preserved; only the relationship/activity metadata is refreshed.
@@ -154,7 +171,8 @@ a synthetic fixture export (no real/private Snapchat data required):
 npm install   # pulls in fflate/jsdom/fake-indexeddb as dev dependencies for the test scripts only
 npm test      # pure logic + parser unit tests (test/run-tests.mjs)
 npm run smoke # full end-to-end smoke test: boots the real app in jsdom, imports
-              # the fixture ZIP, and clicks through dashboard/review/removal/search
+              # the fixture ZIP, and clicks through dashboard/review/removal
+              # (including the fast-path controls)/search/the profile-preview toggle
 ```
 
 `test/build-fixtures.mjs` generates a small synthetic "My Data" export
